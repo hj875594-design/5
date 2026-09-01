@@ -1,0 +1,122 @@
+pip install streamlit pygame pillow numpy
+import math
+import numpy as np
+import pygame
+import streamlit as st
+from PIL import Image
+
+# 1. 페이지 설정 및 상태 초기화
+st.set_page_config(page_title="Streamlit 탱크 시뮬레이터", layout="centered")
+st.title("🚜 Streamlit 탱크 시뮬레이터")
+
+if "tank" not in st.state_dict:
+    st.session_state.tank = {
+        "x": 300.0,
+        "y": 300.0,
+        "angle": 0.0,  # 바라보는 각도 (도)
+        "speed": 0.0,
+        "engine_on": False,
+    }
+
+# 2. 조작 키 및 엔진 상태 표시
+st.sidebar.header("🕹️ 조작 방법")
+st.sidebar.markdown(
+    """
+- **J**: 엔진 시동
+- **H**: 엔진 정지
+- **W**: 전진
+- **S**: 후진
+- **A**: 좌회전
+- **D**: 우회전
+"""
+)
+
+# 3. 키보드 입력 처리 (Streamlit 버튼 및 입력창 활용)
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("엔진 시동 (J 키 역할)"):
+        st.session_state.tank["engine_on"] = True
+with col2:
+    if st.button("엔진 정지 (H 키 역할)"):
+        st.session_state.tank["engine_on"] = False
+        st.session_state.tank["speed"] = 0.0
+
+status = "🟢 가동 중" if st.session_state.tank["engine_on"] else "🔴 정지됨"
+st.subheader(f"엔진 상태: {status}")
+
+# 텍스트 입력을 통한 키보드 조작 (W/A/S/D/J/H)
+key_input = st.text_input(
+    "조작키 입력 후 Enter (W:전진, S:후진, A:좌회전, D:우회전, J:시동, H:정지)",
+    key="key_control",
+).lower()
+
+# 키 입력에 따른 상태 업데이트
+tank = st.session_state.tank
+
+if "j" in key_input:
+    tank["engine_on"] = True
+if "h" in key_input:
+    tank["engine_on"] = False
+    tank["speed"] = 0.0
+
+if tank["engine_on"]:
+    if "w" in key_input:
+        tank["speed"] = min(tank["speed"] + 1.0, 5.0)
+    elif "s" in key_input:
+        tank["speed"] = max(tank["speed"] - 1.0, -3.0)
+    else:
+        tank["speed"] *= 0.8  # 마찰력 감속
+
+    if "a" in key_input:
+        tank["angle"] -= 10.0
+    if "d" in key_input:
+        tank["angle"] += 10.0
+
+    # 위치 이동 계산 (라디안 변환)
+    rad = math.radians(tank["angle"])
+    tank["x"] += tank["speed"] * math.cos(rad)
+    tank["y"] += tank["speed"] * math.sin(rad)
+
+    # 화면 경계 제한
+    tank["x"] = max(20, min(580, tank["x"]))
+    tank["y"] = max(20, min(580, tank["y"]))
+
+# 4. Pygame을 이용한 렌더링 (헤드리스 모드)
+import os
+
+os.environ["SDL_VIDEODRIVER"] = "dummy"
+pygame.init()
+
+WIDTH, HEIGHT = 600, 600
+screen = pygame.Surface((WIDTH, HEIGHT))
+screen.fill((200, 220, 200))  # 배경색 (풀밭)
+
+# 격자선 그리기
+for x in range(0, WIDTH, 50):
+    pygame.draw.line(screen, (180, 200, 180), (x, 0), (x, HEIGHT))
+for y in range(0, HEIGHT, 50):
+    pygame.draw.line(screen, (180, 200, 180), (0, y), (WIDTH, y))
+
+# 탱크 그리기
+tank_surface = pygame.Surface((40, 30), pygame.SRCALPHA)
+# 탱크 본체
+pygame.draw.rect(
+    tank_surface,
+    (50, 100, 50) if tank["engine_on"] else (100, 100, 100),
+    (0, 0, 40, 30),
+    border_radius=5,
+)
+# 탱크 포탑 (포신)
+pygame.draw.line(tank_surface, (0, 0, 0), (20, 15), (40, 15), 4)
+
+# 회전 적용
+rotated_tank = pygame.transform.rotate(tank_surface, -tank["angle"])
+new_rect = rotated_tank.get_rect(center=(int(tank["x"]), int(tank["y"])))
+screen.blit(rotated_tank, new_rect.topleft)
+
+# 5. Pygame Surface를 이미지로 변환하여 Streamlit에 표시
+img_data = pygame.surfarray.array3d(screen)
+img_data = np.transpose(img_data, (1, 0, 2))  # 이미지 방향 수정
+img = Image.fromarray(img_data)
+
+st.image(img, caption="탱크 시뮬레이터 화면", use_column_width=True)
